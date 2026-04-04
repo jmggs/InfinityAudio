@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>packaging/icons/infinityaudio.svg</file>
+        <file>packaging/icons/infinityaudio.ico</file>
+    </qresource>
+</RCC>

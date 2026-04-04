@@ -74,10 +74,38 @@ sudo dpkg -i infinityaudio_0.2.0_amd64.deb
 
 ```bash
 # In MSYS2 UCRT64 terminal:
-pacman -S mingw-w64-ucrt-x86_64-qt6-multimedia mingw-w64-ucrt-x86_64-cmake ninja
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-qt6-base \
+  mingw-w64-ucrt-x86_64-qt6-multimedia
+```
 
-cmake --preset ucrt64-release
-cmake --build --preset ucrt64-release
+Then, from `PowerShell` or `cmd.exe` in the repository root:
+
+```bat
+build_scripts\build-windows.bat
+```
+
+Output:
+
+```text
+build-ucrt\InfinityAudio.exe
+```
+
+### Windows installer (Inno Setup)
+
+Install **Inno Setup 6** and run:
+
+```bat
+build_scripts\build-installer.bat
+```
+
+Output:
+
+```text
+dist\InfinityAudio-setup-0.2.0.exe
 ```
 
 ### macOS
@@ -104,12 +132,18 @@ InfinityAudio/
 ├── ui_widget.h / .cpp         — main window
 ├── vu_meter_widget.h / .cpp   — dual-channel VU meter (QPainter)
 ├── web_server.h / .cpp        — built-in HTTP remote control server
+├── build_scripts/
+│   ├── build-linux.sh         — Linux one-step build script
+│   ├── build-windows.bat      — Windows portable build script
+│   └── build-installer.bat    — Windows Inno Setup build script
 ├── packaging/
 │   ├── infinityaudio.desktop  — Linux desktop launcher
+│   ├── windows/
+│   │   ├── InfinityAudio.iss  — Inno Setup installer script
+│   │   └── README.md          — Windows packaging notes
 │   └── icons/
-│       └── infinityaudio.svg  — infinity symbol icon
-├── build_scripts/
-│   └── build-linux.sh         — Linux one-step build script
+│       ├── infinityaudio.svg  — app icon (source)
+│       └── infinityaudio.ico  — Windows icon / installer icon
 └── docs/
     └── screenshot.png
 ```

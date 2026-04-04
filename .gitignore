@@ -1,8 +1,10 @@
 # Build directories
 build-linux/
 build-mac/
+build-ucrt/
 build-windows/
 build/
+dist/
 cmake-build-*/
 
 # CMake

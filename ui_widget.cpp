@@ -614,7 +614,7 @@ void UiWidget::openSettingsDialog() {
         m_recordPrefixEdit->setText(m_recordPrefix);
         m_recordChunkCombo->addItems({"15", "30", "45", "60"});
         m_recordChunkCombo->setCurrentText(QString::number(m_recordChunkMinutes));
-        m_recordContainerCombo->addItems({"WAV", "AIIF"});
+        m_recordContainerCombo->addItems({"WAV", "AIFF"});
         m_recordProfileCombo->addItems({"16bit 44.1khz", "24bit 48khz", "24bit 96khz"});
         m_recordContainerCombo->setCurrentText(m_recordContainer);
         m_recordProfileCombo->setCurrentText(m_recordProfile);

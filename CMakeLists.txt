@@ -11,10 +11,18 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC OFF)
 
+set(APP_WIN32_RES)
+if(WIN32)
+    enable_language(RC)
+    set(APP_WIN32_RES app_icon.rc)
+endif()
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Gui Multimedia Network)
 
 add_executable(InfinityAudio
     main.cpp
+    resources.qrc
+    ${APP_WIN32_RES}
     wav_writer.cpp
     wav_writer.h
     recorder.cpp
@@ -44,6 +52,41 @@ target_link_libraries(InfinityAudio PRIVATE
 if(WIN32)
     target_compile_definitions(InfinityAudio PRIVATE _CRT_SECURE_NO_WARNINGS)
     set_target_properties(InfinityAudio PROPERTIES WIN32_EXECUTABLE TRUE)
+
+    get_filename_component(MSYS2_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+
+    find_program(WINDEPLOYQT_EXECUTABLE
+        NAMES windeployqt6 windeployqt
+        HINTS "${MSYS2_BIN_DIR}" "C:/msys64/ucrt64/bin"
+    )
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET InfinityAudio POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --dir "$<TARGET_FILE_DIR:InfinityAudio>"
+                --compiler-runtime
+                --no-translations
+                "$<TARGET_FILE:InfinityAudio>"
+            COMMENT "Deploying Qt runtime dependencies"
+            VERBATIM
+        )
+    else()
+        message(WARNING "windeployqt not found; Qt DLLs will not be deployed automatically.")
+    endif()
+
+    file(GLOB MSYS2_RUNTIME_DLLS
+        "${MSYS2_BIN_DIR}/lib*.dll"
+        "${MSYS2_BIN_DIR}/zlib1.dll"
+    )
+
+    foreach(runtime_dll IN LISTS MSYS2_RUNTIME_DLLS)
+        add_custom_command(TARGET InfinityAudio POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${runtime_dll}"
+                "$<TARGET_FILE_DIR:InfinityAudio>"
+            VERBATIM
+        )
+    endforeach()
 endif()
 
 install(TARGETS InfinityAudio

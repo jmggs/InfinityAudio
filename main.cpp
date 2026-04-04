@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QByteArray>
+#include <QIcon>
 #include <QSettings>
 #include "ui_widget.h"
 
@@ -23,8 +24,10 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("InfinityAudio");
     app.setOrganizationName("InfinityAudio");
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/packaging/icons/infinityaudio.ico")));
 
     UiWidget widget;
+    widget.setWindowIcon(app.windowIcon());
     widget.show();
 
     return app.exec();
