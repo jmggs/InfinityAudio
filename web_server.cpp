@@ -89,6 +89,26 @@ select:focus{outline:none;border-color:#555}
       </div>
     </div>
     <div class="pnl">
+      <div class="pnl-t">Settings</div>
+      <div class="src-grid">
+        <span class="src-lbl">Prefix</span>
+        <input id="prefix" type="text" placeholder="ex: StudioA" style="width:100%;background:#111;border:1px solid #2e2e2e;color:#bbb;padding:4px 7px;border-radius:5px;font-size:11px" />
+      </div>
+      <div class="src-grid">
+        <span class="src-lbl">Chunk</span>
+        <select id="chunkSel">
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="45">45 min</option>
+          <option value="60">60 min</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn b-sm" onclick="loadSettings()">Reload</button>
+        <button class="btn b-sm" onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+    <div class="pnl">
       <div class="pnl-t">Info</div>
       <div class="kv"><span class="kk">Format</span><span class="kv_" id="iFmt">—</span></div>
       <div class="kv"><span class="kk">Status</span><span class="kv_" id="iStatus">—</span></div>
@@ -119,10 +139,30 @@ async function loadInputs(){
 }
 async function doRec(){ try { await fetch('/rec'); } catch(e) {} }
 async function doStop(){ try { await fetch('/stop'); } catch(e) {} }
+async function loadSettings(){
+  try {
+    const d = await (await fetch('/settings')).json();
+    const prefix = document.getElementById('prefix');
+    const chunkSel = document.getElementById('chunkSel');
+    prefix.value = d.prefix || '';
+    const chunk = String(d.chunkMinutes || 60);
+    if ([...chunkSel.options].some(o => o.value === chunk)) {
+      chunkSel.value = chunk;
+    }
+  } catch(e) {}
+}
+async function saveSettings(){
+  try {
+    const prefix = document.getElementById('prefix').value || '';
+    const chunk = document.getElementById('chunkSel').value || '60';
+    await fetch('/set-settings?prefix=' + encodeURIComponent(prefix) + '&chunkMinutes=' + encodeURIComponent(chunk));
+    await loadSettings();
+  } catch(e) {}
+}
 async function toggleMonitor(){
   const btn = document.getElementById('mBtn');
   const enabled = !btn.classList.contains('on');
-  try { await fetch('/monitor?enabled=' + (enabled ? '1' : '0')); } catch(e) {}
+  try { await fetch('/web-monitor?enabled=' + (enabled ? '1' : '0')); } catch(e) {}
   monitorOn = enabled;
   if (monitorOn) {
     startAudioLoop();
@@ -183,8 +223,8 @@ async function pollStatus(){
       stxt.textContent = d.status || (d.input ? 'Live' : 'Idle');
       rBtn.disabled=false; sBtn.disabled=true; recStart=null;
     }
-    mBtn.classList.toggle('on', !!d.monitor);
-    if (!d.monitor) {
+    mBtn.classList.toggle('on', !!d.webMonitor);
+    if (!d.webMonitor) {
       monitorOn = false;
       nextPlayTime = 0;
     }
@@ -234,6 +274,7 @@ function drawVu(dbL,dbR){
   ctx.fillText('L',xL+bW/2,H-2); ctx.fillText('R',xR+bW/2,H-2);
 }
 loadInputs();
+loadSettings();
 setInterval(pollStatus, 200); pollStatus();
 </script>
 </body>
@@ -282,6 +323,12 @@ void WebServer::setRecorderHandlers(std::function<void()> startFn,
     m_stopRecordingFn = std::move(stopFn);
 }
 
+void WebServer::setMonitorHandlers(std::function<bool()> monitorEnabledFn,
+                   std::function<bool(bool)> setMonitorFn) {
+  m_isMonitorEnabledFn = std::move(monitorEnabledFn);
+  m_setMonitorFn = std::move(setMonitorFn);
+}
+
 void WebServer::setStateHandlers(std::function<bool()> recordingFn,
                                  std::function<QString()> statusFn,
                                  std::function<QString()> fileFn,
@@ -293,6 +340,16 @@ void WebServer::setStateHandlers(std::function<bool()> recordingFn,
     m_formatFn = std::move(formatFn);
     m_segmentStartFn = std::move(segmentStartFn);
 }
+
+  void WebServer::setSettingsHandlers(std::function<QString()> filePrefixFn,
+                    std::function<int()> chunkMinutesFn,
+                    std::function<bool(const QString&)> setFilePrefixFn,
+                    std::function<bool(int)> setChunkMinutesFn) {
+    m_filePrefixFn = std::move(filePrefixFn);
+    m_chunkMinutesFn = std::move(chunkMinutesFn);
+    m_setFilePrefixFn = std::move(setFilePrefixFn);
+    m_setChunkMinutesFn = std::move(setChunkMinutesFn);
+  }
 
 void WebServer::onVuLevels(float leftDb, float rightDb) {
     m_vuL = leftDb;
@@ -387,8 +444,11 @@ void WebServer::handleRequest(QTcpSocket* socket, const QString& path, const QSt
     if (path == "/rec") return serveRec(socket);
     if (path == "/stop") return serveStop(socket);
     if (path == "/monitor") return serveMonitor(socket, query);
+    if (path == "/web-monitor") return serveWebMonitor(socket, query);
     if (path == "/audio.wav") return serveAudioWav(socket);
     if (path == "/set-input") return serveSetInput(socket, query);
+    if (path == "/settings") return serveSettings(socket);
+    if (path == "/set-settings") return serveSetSettings(socket, query);
     sendError(socket, 404, "Not Found");
 }
 
@@ -396,7 +456,8 @@ void WebServer::serveIndex(QTcpSocket* socket) { sendHtml(socket, QByteArray(kIn
 
 void WebServer::serveStatus(QTcpSocket* socket) {
     const bool recording = m_isRecordingFn ? m_isRecordingFn() : false;
-  const bool monitor = m_webMonitorEnabled;
+  const bool monitor = m_isMonitorEnabledFn ? m_isMonitorEnabledFn() : false;
+  const bool webMonitor = m_webMonitorEnabled;
     const QString input = m_currentInputFn ? m_currentInputFn() : QString{};
     const QString status = m_statusFn ? m_statusFn() : QString{};
     const QString file = m_fileFn ? m_fileFn() : QString{};
@@ -407,6 +468,7 @@ void WebServer::serveStatus(QTcpSocket* socket) {
     json += "{";
     json += "\"recording\":" + QByteArray(recording ? "true" : "false") + ',';
     json += "\"monitor\":" + QByteArray(monitor ? "true" : "false") + ',';
+    json += "\"webMonitor\":" + QByteArray(webMonitor ? "true" : "false") + ',';
     json += "\"input\":\"" + jsonEscape(input) + "\",";
     json += "\"status\":\"" + jsonEscape(status) + "\",";
     json += "\"file\":\"" + jsonEscape(file) + "\",";
@@ -443,12 +505,24 @@ void WebServer::serveStop(QTcpSocket* socket) {
 void WebServer::serveMonitor(QTcpSocket* socket, const QString& query) {
     const QString enabledParam = queryParam(query, "enabled");
     const bool enabled = (enabledParam == "1" || enabledParam.compare("true", Qt::CaseInsensitive) == 0);
-  m_webMonitorEnabled = enabled;
-  if (!m_webMonitorEnabled) {
-    m_audioPcm16.clear();
-  }
-  sendJson(socket, "{\"ok\":true}");
+
+    bool ok = true;
+    if (m_setMonitorFn) {
+        ok = m_setMonitorFn(enabled);
+    }
+
+    sendJson(socket, ok ? "{\"ok\":true}" : "{\"ok\":false}");
 }
+
+  void WebServer::serveWebMonitor(QTcpSocket* socket, const QString& query) {
+    const QString enabledParam = queryParam(query, "enabled");
+    const bool enabled = (enabledParam == "1" || enabledParam.compare("true", Qt::CaseInsensitive) == 0);
+    m_webMonitorEnabled = enabled;
+    if (!m_webMonitorEnabled) {
+      m_audioPcm16.clear();
+    }
+    sendJson(socket, "{\"ok\":true}");
+  }
 
 void WebServer::serveAudioWav(QTcpSocket* socket) {
   QByteArray pcm;
@@ -514,6 +588,39 @@ void WebServer::serveSetInput(QTcpSocket* socket, const QString& query) {
     const QString device = queryParam(query, "device");
     const bool ok = !device.isEmpty() && m_setInputFn ? m_setInputFn(device) : false;
     sendJson(socket, ok ? "{\"ok\":true}" : "{\"ok\":false}");
+}
+
+void WebServer::serveSettings(QTcpSocket* socket) {
+  const QString prefix = m_filePrefixFn ? m_filePrefixFn() : QString{};
+  const int chunkMinutes = m_chunkMinutesFn ? m_chunkMinutesFn() : 60;
+  QByteArray json;
+  json += "{";
+  json += "\"prefix\":\"" + jsonEscape(prefix) + "\",";
+  json += "\"chunkMinutes\":" + QByteArray::number(chunkMinutes);
+  json += "}";
+  sendJson(socket, json);
+}
+
+void WebServer::serveSetSettings(QTcpSocket* socket, const QString& query) {
+  const QString prefix = queryParam(query, "prefix");
+  const QString chunkParam = queryParam(query, "chunkMinutes");
+
+  bool ok = true;
+  if (m_setFilePrefixFn) {
+    ok = m_setFilePrefixFn(prefix) && ok;
+  }
+
+  if (!chunkParam.isEmpty()) {
+    bool isNumber = false;
+    const int minutes = chunkParam.toInt(&isNumber);
+    if (!isNumber || !m_setChunkMinutesFn) {
+      ok = false;
+    } else {
+      ok = m_setChunkMinutesFn(minutes) && ok;
+    }
+  }
+
+  sendJson(socket, ok ? "{\"ok\":true}" : "{\"ok\":false}");
 }
 
 static void writeAndClose(QTcpSocket* socket, const QByteArray& data) {

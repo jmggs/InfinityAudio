@@ -12,7 +12,6 @@ namespace {
 
 constexpr int    kSampleRate    = 48000;
 constexpr int    kChannels      = 2;       // always record stereo WAV
-constexpr qint64 kSegmentMs     = 3600LL * 1000LL;  // 1 hour
 constexpr float  kMinDb         = -60.0f;
 constexpr float  kMaxDb         =   0.0f;
 constexpr float  kVuDecayPerSec =  20.0f;  // dB/s fall-off
@@ -251,6 +250,26 @@ bool Recorder::isMonitorOutputEnabled() const {
     return m_monitorOutputEnabled;
 }
 
+void Recorder::setFilePrefix(const QString& prefix) {
+    QMutexLocker lk(&m_mutex);
+    m_filePrefix = prefix.trimmed();
+}
+
+QString Recorder::filePrefix() const {
+    QMutexLocker lk(&m_mutex);
+    return m_filePrefix;
+}
+
+void Recorder::setSegmentDurationMs(qint64 durationMs) {
+    QMutexLocker lk(&m_mutex);
+    m_segmentDurationMs = std::max<qint64>(60 * 1000, durationMs);
+}
+
+qint64 Recorder::segmentDurationMs() const {
+    QMutexLocker lk(&m_mutex);
+    return m_segmentDurationMs;
+}
+
 QString Recorder::currentFile() const {
     QMutexLocker lk(&m_mutex);
     return m_currentFile;
@@ -295,8 +314,14 @@ void Recorder::closeFile() {
 }
 
 QString Recorder::makeFilePath() const {
+    QString prefix;
+    {
+        QMutexLocker lk(&m_mutex);
+        prefix = m_filePrefix;
+    }
     const QString ts = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"));
-    return QDir(m_folder).filePath(QStringLiteral("%1.wav").arg(ts));
+    const QString base = prefix.isEmpty() ? ts : QStringLiteral("%1_%2").arg(prefix, ts);
+    return QDir(m_folder).filePath(QStringLiteral("%1.wav").arg(base));
 }
 
 void Recorder::onAudioReady() {
@@ -424,12 +449,14 @@ void Recorder::checkRotation() {
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     qint64 startMs;
+    qint64 segmentDurationMs;
     {
         QMutexLocker lk(&m_mutex);
         startMs = m_segmentStartMs;
+        segmentDurationMs = m_segmentDurationMs;
     }
 
-    if (now - startMs >= kSegmentMs) {
+    if (now - startMs >= segmentDurationMs) {
         openNewFile();
     }
 }

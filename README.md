@@ -2,20 +2,23 @@
 
 **Professional continuous audio recorder — C++/Qt6, zero dependencies.**
 
+Current release: **v0.2**
+
 ![InfinityAudio](docs/screenshot.png)
 
-Record broadcast-quality audio continuously with automatic 1-hour file segmentation, real-time dual-channel VU meters, and a built-in web remote control panel.
+Record broadcast-quality audio continuously with configurable file segmentation, real-time dual-channel VU meters, and a built-in web remote control panel.
 
 ---
 
 ## Features
 
-- **Continuous recording** — automatic 1-hour WAV segments, never misses a beat
+- **Continuous recording** — automatic WAV segment rotation (15 / 30 / 45 / 60 minutes)
+- **Custom file prefix** — prepend a custom name before timestamp (e.g. `StudioA_20260404_113000.wav`)
 - **High-quality formats** — WAV or AIFF, 16-bit 44.1 kHz / 24-bit 48 kHz / 24-bit 96 kHz
 - **Real-time VU meters** — dual-channel (L/R) with dB readings
 - **Audio monitor** — listen back through any output device while recording
 - **Web remote panel** — control recording from any device on the network via browser
-- **Audio streaming** — monitor live audio in the browser via the web panel
+- **Audio streaming** — monitor live audio in the browser via a dedicated web monitor endpoint
 - **Watchdog** — auto-restarts recording if anything goes wrong
 - **Debian package** — `.deb` installer with desktop launcher and icon
 - **Zero external dependencies** — no NDI SDK, no FFmpeg, no libav
@@ -33,11 +36,14 @@ Open `http://<machine-ip>:<port>` in any browser to:
 | `GET /` | Web control panel (HTML) |
 | `GET /status` | JSON status (recording, filename, elapsed) |
 | `GET /inputs` | JSON list of audio input devices |
-| `POST /rec` | Start recording |
-| `POST /stop` | Stop recording |
+| `GET /rec` | Start recording |
+| `GET /stop` | Stop recording |
 | `GET /set-input?device=NAME` | Switch input device |
-| `GET /monitor?enabled=1\|0` | Toggle web audio monitor |
+| `GET /monitor?enabled=1\|0` | Toggle GUI monitor (speaker monitoring) |
+| `GET /web-monitor?enabled=1\|0` | Toggle web stream monitor |
 | `GET /audio.wav` | Live audio stream (Web Audio API) |
+| `GET /settings` | Read remote settings (`prefix`, `chunkMinutes`) |
+| `GET /set-settings?prefix=...&chunkMinutes=15\|30\|45\|60` | Update remote settings |
 
 ---
 
@@ -60,8 +66,8 @@ chmod +x build_scripts/build-linux.sh
 ```bash
 cd build-linux
 cpack -G DEB
-# Output: infinityaudio_0.1.0_amd64.deb
-sudo dpkg -i infinityaudio_0.1.0_amd64.deb
+# Output: infinityaudio_0.2.0_amd64.deb
+sudo dpkg -i infinityaudio_0.2.0_amd64.deb
 ```
 
 ### Windows (MSYS2 / UCRT64)
@@ -127,6 +133,8 @@ No NDI SDK, no FFmpeg, no libav — zero extra dependencies.
 - **Input Device** — select any available audio input
 - **Recording Folder** — destination for recorded files
 - **Container** — WAV or AIFF
+- **File Prefix** — optional name before timestamp
+- **Chunk Duration** — 15 / 30 / 45 / 60 minutes
 - **Audio Profile** — 16-bit 44.1 kHz / 24-bit 48 kHz / 24-bit 96 kHz
 - **Remote** — configure port and password for the web panel
 
@@ -136,7 +144,10 @@ Settings are persisted via `QSettings` and restored on next launch.
 
 ## File naming
 
-Files are named by timestamp only: `YYYYMMDD_HHMMSS.wav`
+Files are named with optional prefix + timestamp:
+
+- `PREFIX_YYYYMMDD_HHMMSS.wav` (when prefix is set)
+- `YYYYMMDD_HHMMSS.wav` (when prefix is empty)
 
 ---
 

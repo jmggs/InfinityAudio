@@ -35,6 +35,10 @@ public:
     bool    isRecording()           const;
     bool    isMonitoring()          const;
     bool    isMonitorOutputEnabled() const;
+    void    setFilePrefix(const QString& prefix);
+    QString filePrefix()            const;
+    void    setSegmentDurationMs(qint64 durationMs);
+    qint64  segmentDurationMs()     const;
     QString currentFile()           const;
     qint64  currentSegmentStartMs() const;
     QString lastError()             const;
@@ -74,6 +78,8 @@ private:
     WavWriter      m_writer;
     QString        m_folder;
     QAudioDevice   m_device;
+    QString        m_filePrefix;
+    qint64         m_segmentDurationMs{3600LL * 1000LL};
 
     // Rotation timer (checks every 5 s)
     QTimer         m_rotTimer;

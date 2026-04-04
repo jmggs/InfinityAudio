@@ -56,12 +56,33 @@ UiWidget::UiWidget(QWidget* parent)
     m_webServer->setRecorderHandlers(
         [this]() { startRecording(); },
         [this]() { stopRecording(); });
+    m_webServer->setMonitorHandlers(
+        [this]() { return m_recorder.isMonitorOutputEnabled(); },
+        [this](bool enabled) { return setMonitorEnabled(enabled); });
     m_webServer->setStateHandlers(
         [this]() { return m_recorder.isRecording(); },
         [this]() { return m_statusLabel ? m_statusLabel->text() : QString(); },
         [this]() { return m_fileLabel ? m_fileLabel->text() : QString(); },
         [this]() { return m_formatLabel ? m_formatLabel->text() : QString(); },
         [this]() { return m_recorder.currentSegmentStartMs(); });
+    m_webServer->setSettingsHandlers(
+        [this]() { return m_recordPrefix; },
+        [this]() { return m_recordChunkMinutes; },
+        [this](const QString& value) {
+            m_recordPrefix = value.trimmed();
+            m_recorder.setFilePrefix(m_recordPrefix);
+            saveSettings();
+            return true;
+        },
+        [this](int minutes) {
+            if (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60) {
+                return false;
+            }
+            m_recordChunkMinutes = minutes;
+            m_recorder.setSegmentDurationMs(static_cast<qint64>(minutes) * 60 * 1000);
+            saveSettings();
+            return true;
+        });
     connect(&m_recorder, &Recorder::vuLevelsReady, m_webServer, &WebServer::onVuLevels);
     connect(&m_recorder, &Recorder::audioPreviewPcmReady, m_webServer, &WebServer::onAudioPcm16);
 
@@ -321,6 +342,12 @@ void UiWidget::loadSettings() {
     m_monitorBtn->setChecked(s.value("monitorEnabled", false).toBool());
     m_remotePort = static_cast<quint16>(std::clamp(s.value("remotePort", 8000).toInt(), 1024, 65535));
     m_remotePassword = s.value("remotePassword", QString()).toString();
+    m_recordPrefix = s.value("recordPrefix", QString()).toString().trimmed();
+    m_recordChunkMinutes = s.value("recordChunkMinutes", 60).toInt();
+    if (m_recordChunkMinutes != 15 && m_recordChunkMinutes != 30 &&
+        m_recordChunkMinutes != 45 && m_recordChunkMinutes != 60) {
+        m_recordChunkMinutes = 60;
+    }
     m_recordContainer = s.value("recordContainer", QString("WAV")).toString();
     m_recordProfile = s.value("recordProfile", QString("24bit 48khz")).toString();
     if (m_recordContainer.trimmed().isEmpty()) m_recordContainer = "WAV";
@@ -328,6 +355,8 @@ void UiWidget::loadSettings() {
     if (m_formatLabel) {
         m_formatLabel->setText(m_recordContainer + " " + m_recordProfile);
     }
+    m_recorder.setFilePrefix(m_recordPrefix);
+    m_recorder.setSegmentDurationMs(static_cast<qint64>(m_recordChunkMinutes) * 60 * 1000);
     const bool remoteEnabled = s.value("remoteEnabled", false).toBool();
 
     // Restore device by ID
@@ -389,6 +418,8 @@ void UiWidget::saveSettings() {
     s.setValue("remoteEnabled", m_webServer && m_webServer->isRunning());
     s.setValue("remotePort", static_cast<int>(m_remotePort));
     s.setValue("remotePassword", m_remotePassword);
+    s.setValue("recordPrefix", m_recordPrefix);
+    s.setValue("recordChunkMinutes", m_recordChunkMinutes);
     s.setValue("recordContainer", m_recordContainer);
     s.setValue("recordProfile", m_recordProfile);
     s.setValue("windowGeometry", saveGeometry());
@@ -575,8 +606,14 @@ void UiWidget::openSettingsDialog() {
         auto* inputValue = new QLabel(m_settingsDialog);
         auto* folderValue = new QLabel(m_settingsDialog);
         auto* configValue = new QLabel(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/InfinityAudio/InfinityAudio.conf", m_settingsDialog);
+        m_recordPrefixEdit = new QLineEdit(m_settingsDialog);
+        m_recordChunkCombo = new QComboBox(m_settingsDialog);
         m_recordContainerCombo = new QComboBox(m_settingsDialog);
         m_recordProfileCombo = new QComboBox(m_settingsDialog);
+        m_recordPrefixEdit->setPlaceholderText("Ex: StudioA");
+        m_recordPrefixEdit->setText(m_recordPrefix);
+        m_recordChunkCombo->addItems({"15", "30", "45", "60"});
+        m_recordChunkCombo->setCurrentText(QString::number(m_recordChunkMinutes));
         m_recordContainerCombo->addItems({"WAV", "AIIF"});
         m_recordProfileCombo->addItems({"16bit 44.1khz", "24bit 48khz", "24bit 96khz"});
         m_recordContainerCombo->setCurrentText(m_recordContainer);
@@ -589,13 +626,15 @@ void UiWidget::openSettingsDialog() {
         configValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
         form->addRow("Input:", inputValue);
         form->addRow("Folder:", folderValue);
+        form->addRow("File Prefix:", m_recordPrefixEdit);
+        form->addRow("Chunk (min):", m_recordChunkCombo);
         form->addRow("Container:", m_recordContainerCombo);
         form->addRow("Audio:", m_recordProfileCombo);
         form->addRow("Config:", configValue);
         root->addLayout(form);
         root->addSpacing(12);
 
-        auto* appInfo = new QLabel("InfinityAudio v0.1<br><a href=\"https://github.com/jmggs/InfinityAudio/\">https://github.com/jmggs/InfinityAudio/</a>", m_settingsDialog);
+        auto* appInfo = new QLabel("InfinityAudio v0.2<br><a href=\"https://github.com/jmggs/InfinityAudio/\">https://github.com/jmggs/InfinityAudio/</a>", m_settingsDialog);
         appInfo->setObjectName("fileVal");
         appInfo->setTextFormat(Qt::RichText);
         appInfo->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::TextSelectableByMouse);
@@ -605,6 +644,23 @@ void UiWidget::openSettingsDialog() {
         connect(m_recordContainerCombo, &QComboBox::currentTextChanged, this, [this](const QString& value) {
             m_recordContainer = value;
             if (m_formatLabel) m_formatLabel->setText(m_recordContainer + " " + m_recordProfile);
+            saveSettings();
+        });
+        connect(m_recordPrefixEdit, &QLineEdit::editingFinished, this, [this]() {
+            if (!m_recordPrefixEdit) return;
+            m_recordPrefix = m_recordPrefixEdit->text().trimmed();
+            m_recorder.setFilePrefix(m_recordPrefix);
+            m_recordPrefixEdit->setText(m_recordPrefix);
+            saveSettings();
+        });
+        connect(m_recordChunkCombo, &QComboBox::currentTextChanged, this, [this](const QString& value) {
+            bool ok = false;
+            const int minutes = value.toInt(&ok);
+            if (!ok || (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60)) {
+                return;
+            }
+            m_recordChunkMinutes = minutes;
+            m_recorder.setSegmentDurationMs(static_cast<qint64>(minutes) * 60 * 1000);
             saveSettings();
         });
         connect(m_recordProfileCombo, &QComboBox::currentTextChanged, this, [this](const QString& value) {
@@ -622,6 +678,12 @@ void UiWidget::openSettingsDialog() {
     if (m_settingsDialog) {
         if (m_recordContainerCombo) {
             m_recordContainerCombo->setCurrentText(m_recordContainer);
+        }
+        if (m_recordPrefixEdit) {
+            m_recordPrefixEdit->setText(m_recordPrefix);
+        }
+        if (m_recordChunkCombo) {
+            m_recordChunkCombo->setCurrentText(QString::number(m_recordChunkMinutes));
         }
         if (m_recordProfileCombo) {
             m_recordProfileCombo->setCurrentText(m_recordProfile);
@@ -662,7 +724,18 @@ void UiWidget::openRemoteDialog() {
         auto* apiInfo = new QLabel(m_remoteDialog);
         apiInfo->setObjectName("fileVal");
         apiInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        apiInfo->setText("GET /rec\nGET /stop\nGET /monitor?enabled=1|0\nGET /audio.wav\nGET /inputs\nGET /set-input?device=NAME\nGET /status");
+        apiInfo->setText(
+            "Endpoints:\n"
+            "GET /rec  -> Start recording\n"
+            "GET /stop -> Stop recording\n"
+            "GET /monitor?enabled=1|0 -> GUI monitor (speakers)\n"
+            "GET /web-monitor?enabled=1|0 -> Web stream monitor\n"
+            "GET /audio.wav -> Web audio chunk (for browser playback)\n"
+            "GET /inputs -> List input devices\n"
+            "GET /set-input?device=NAME -> Select input device\n"
+            "GET /settings -> Read prefix + chunk\n"
+            "GET /set-settings?prefix=...&chunkMinutes=15|30|45|60 -> Update settings\n"
+            "GET /status -> App status JSON");
         form->addRow("Port:", m_remotePortSpin);
         form->addRow("Password:", m_remotePasswordEdit);
         form->addRow("Status:", m_remoteStatusLabel);
@@ -820,9 +893,9 @@ void UiWidget::updateUi() {
             .arg(ss, 2, 10, QLatin1Char('0')));
 
     // Segment progress
-    constexpr qint64 kSegS = 3600;
-    const int pct         = int(std::min<qint64>(100, elapsedS * 100 / kSegS));
-    const qint64 remainS  = std::max<qint64>(0, kSegS - elapsedS);
+    const qint64 segS = std::max<qint64>(1, m_recorder.segmentDurationMs() / 1000);
+    const int pct         = int(std::min<qint64>(100, elapsedS * 100 / segS));
+    const qint64 remainS  = std::max<qint64>(0, segS - elapsedS);
     const qint64 rm = remainS / 60;
     const qint64 rs = remainS % 60;
     m_segmentLabel->setText(
@@ -838,8 +911,8 @@ void UiWidget::closeEvent(QCloseEvent* event) {
     if (m_recorder.isRecording()) {
         QMessageBox msgBox(this);
         msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setWindowTitle("Playback Active");
-        msgBox.setText("Video is Recording!\n\nDo you want to lose your job and ruin your carreer?");
+        msgBox.setWindowTitle("Recording Active");
+        msgBox.setText("Audio is Recording!\n\nDo you want to lose your job and ruin your carreer?");
         QPushButton* closeBtn = msgBox.addButton("Yes and Close", QMessageBox::DestructiveRole);
         msgBox.addButton("Cancel", QMessageBox::RejectRole);
         msgBox.exec();

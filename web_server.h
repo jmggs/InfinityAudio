@@ -25,11 +25,17 @@ public:
                           std::function<bool(const QString&)> setFn);
     void setRecorderHandlers(std::function<void()> startFn,
                              std::function<void()> stopFn);
+    void setMonitorHandlers(std::function<bool()> monitorEnabledFn,
+                            std::function<bool(bool)> setMonitorFn);
     void setStateHandlers(std::function<bool()> recordingFn,
                           std::function<QString()> statusFn,
                           std::function<QString()> fileFn,
                           std::function<QString()> formatFn,
                           std::function<qint64()> segmentStartFn);
+    void setSettingsHandlers(std::function<QString()> filePrefixFn,
+                             std::function<int()> chunkMinutesFn,
+                             std::function<bool(const QString&)> setFilePrefixFn,
+                             std::function<bool(int)> setChunkMinutesFn);
 
 public slots:
     void onVuLevels(float leftDb, float rightDb);
@@ -49,8 +55,11 @@ private:
     void serveRec(QTcpSocket* socket);
     void serveStop(QTcpSocket* socket);
     void serveMonitor(QTcpSocket* socket, const QString& query);
+    void serveWebMonitor(QTcpSocket* socket, const QString& query);
     void serveAudioWav(QTcpSocket* socket);
     void serveSetInput(QTcpSocket* socket, const QString& query);
+    void serveSettings(QTcpSocket* socket);
+    void serveSetSettings(QTcpSocket* socket, const QString& query);
 
     void sendJson(QTcpSocket* socket, const QByteArray& json);
     void sendHtml(QTcpSocket* socket, const QByteArray& html);
@@ -72,9 +81,15 @@ private:
     std::function<bool(const QString&)> m_setInputFn;
     std::function<void()> m_startRecordingFn;
     std::function<void()> m_stopRecordingFn;
+    std::function<bool()> m_isMonitorEnabledFn;
+    std::function<bool(bool)> m_setMonitorFn;
     std::function<bool()> m_isRecordingFn;
     std::function<QString()> m_statusFn;
     std::function<QString()> m_fileFn;
     std::function<QString()> m_formatFn;
     std::function<qint64()> m_segmentStartFn;
+    std::function<QString()> m_filePrefixFn;
+    std::function<int()> m_chunkMinutesFn;
+    std::function<bool(const QString&)> m_setFilePrefixFn;
+    std::function<bool(int)> m_setChunkMinutesFn;
 };

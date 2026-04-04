@@ -82,6 +82,8 @@ private:
 
     VuMeterWidget* m_vuMeter{nullptr};
     QDialog*       m_settingsDialog{nullptr};
+    QLineEdit*     m_recordPrefixEdit{nullptr};
+    QComboBox*     m_recordChunkCombo{nullptr};
     QComboBox*     m_recordContainerCombo{nullptr};
     QComboBox*     m_recordProfileCombo{nullptr};
     QDialog*       m_remoteDialog{nullptr};
@@ -94,6 +96,8 @@ private:
     bool           m_restoringSettings{false};
     quint16        m_remotePort{8000};
     QString        m_remotePassword;
+    QString        m_recordPrefix;
+    int            m_recordChunkMinutes{60};
     QString        m_recordContainer{"WAV"};
     QString        m_recordProfile{"24bit 48khz"};
     qint64         m_lastVuMs{0};
