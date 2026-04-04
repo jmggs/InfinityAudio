@@ -10,8 +10,7 @@
 
 namespace {
 
-constexpr int    kSampleRate    = 48000;
-constexpr int    kChannels      = 2;       // always record stereo WAV
+constexpr int    kChannels      = 2;       // always record stereo
 constexpr float  kMinDb         = -60.0f;
 constexpr float  kMaxDb         =   0.0f;
 constexpr float  kVuDecayPerSec =  20.0f;  // dB/s fall-off
@@ -21,49 +20,73 @@ float toDb(float rms) {
     return std::max(kMinDb, std::min(kMaxDb, 20.0f * std::log10(rms)));
 }
 
-// Negotiate the best supported QAudioFormat for the given device.
-// Tries: Float 48 kHz stereo → Int16 48 kHz stereo → Int16 48 kHz mono
-// Returns an invalid format if nothing is supported.
-QAudioFormat bestFormat(const QAudioDevice& dev) {
+// Parse "16bit 44.1khz" / "24bit 48khz" / "24bit 96khz"
+// Returns true and sets sampleRate + bitDepth on success.
+bool parseProfile(const QString& profile, int& sampleRate, int& bitDepth) {
+    // bit depth
+    if (profile.startsWith("16"))      bitDepth = 16;
+    else if (profile.startsWith("24")) bitDepth = 24;
+    else                               return false;
+
+    // sample rate
+    if (profile.contains("44.1") || profile.contains("44100"))       sampleRate = 44100;
+    else if (profile.contains("48")  && !profile.contains("96"))     sampleRate = 48000;
+    else if (profile.contains("96"))                                  sampleRate = 96000;
+    else                                                              return false;
+
+    return true;
+}
+
+// Negotiate the best supported QAudioFormat for the given device at the
+// requested sample rate. Falls back to 48000 if the rate is unsupported.
+QAudioFormat bestFormat(const QAudioDevice& dev, int wantedSampleRate) {
     const QAudioFormat::SampleFormat sampleFmts[] = {
         QAudioFormat::Float,
         QAudioFormat::Int16,
     };
     const int channelCounts[] = { 2, 1 };
+    const int rates[] = { wantedSampleRate, 48000, 44100, 96000 };
 
-    for (int ch : channelCounts) {
-        for (auto sf : sampleFmts) {
-            QAudioFormat fmt;
-            fmt.setSampleRate(kSampleRate);
-            fmt.setChannelCount(ch);
-            fmt.setSampleFormat(sf);
-            if (dev.isFormatSupported(fmt)) {
-                return fmt;
+    for (int rate : rates) {
+        for (int ch : channelCounts) {
+            for (auto sf : sampleFmts) {
+                QAudioFormat fmt;
+                fmt.setSampleRate(rate);
+                fmt.setChannelCount(ch);
+                fmt.setSampleFormat(sf);
+                if (dev.isFormatSupported(fmt)) {
+                    return fmt;
+                }
             }
         }
     }
     return {};  // invalid
 }
 
-QAudioFormat bestSharedFormat(const QAudioDevice& inputDev, const QAudioDevice& outputDev) {
+QAudioFormat bestSharedFormat(const QAudioDevice& inputDev,
+                               const QAudioDevice& outputDev,
+                               int wantedSampleRate) {
     const QAudioFormat::SampleFormat sampleFmts[] = {
         QAudioFormat::Float,
         QAudioFormat::Int16,
     };
     const int channelCounts[] = { 2, 1 };
+    const int rates[] = { wantedSampleRate, 48000, 44100, 96000 };
 
-    for (int ch : channelCounts) {
-        for (auto sf : sampleFmts) {
-            QAudioFormat fmt;
-            fmt.setSampleRate(kSampleRate);
-            fmt.setChannelCount(ch);
-            fmt.setSampleFormat(sf);
-            if (inputDev.isFormatSupported(fmt) && outputDev.isFormatSupported(fmt)) {
-                return fmt;
+    for (int rate : rates) {
+        for (int ch : channelCounts) {
+            for (auto sf : sampleFmts) {
+                QAudioFormat fmt;
+                fmt.setSampleRate(rate);
+                fmt.setChannelCount(ch);
+                fmt.setSampleFormat(sf);
+                if (inputDev.isFormatSupported(fmt) && outputDev.isFormatSupported(fmt)) {
+                    return fmt;
+                }
             }
         }
     }
-    return bestFormat(inputDev);
+    return bestFormat(inputDev, wantedSampleRate);
 }
 
 } // namespace
@@ -79,13 +102,13 @@ Recorder::~Recorder() {
     stop();
 }
 
-bool Recorder::startSource(const QAudioDevice& device) {
+bool Recorder::startSource(const QAudioDevice& device, int sampleRate) {
     m_device = device;
 
-    m_activeFormat = bestSharedFormat(device, QMediaDevices::defaultAudioOutput());
+    m_activeFormat = bestSharedFormat(device, QMediaDevices::defaultAudioOutput(), sampleRate);
     if (!m_activeFormat.isValid()) {
         QMutexLocker lk(&m_mutex);
-        m_lastError = QStringLiteral("Device does not support 48 kHz audio");
+        m_lastError = QStringLiteral("Device does not support the requested audio format");
         emit recordingError(m_lastError);
         return false;
     }
@@ -102,7 +125,7 @@ bool Recorder::startSource(const QAudioDevice& device) {
     }
 
     connect(m_ioDevice, &QIODevice::readyRead, this, &Recorder::onAudioReady);
-    m_lastVuMs = QDateTime::currentMSecsSinceEpoch();
+    m_lastVuMs   = QDateTime::currentMSecsSinceEpoch();
     m_monitoring = true;
 
     if (m_monitorOutputEnabled && !startMonitorSink()) {
@@ -135,7 +158,7 @@ bool Recorder::startMonitoring(const QAudioDevice& device) {
         stopSource();
     }
 
-    return startSource(device);
+    return startSource(device, m_targetSampleRate);
 }
 
 void Recorder::stopMonitoring() {
@@ -199,18 +222,38 @@ bool Recorder::setMonitorOutputEnabled(bool enabled) {
     return true;
 }
 
-bool Recorder::start(const QString& folder, const QAudioDevice& device) {
+bool Recorder::start(const QString& folder, const QAudioDevice& device,
+                     const QString& container, const QString& profile) {
     if (m_recording) return true;
+
+    // Parse the profile into sample rate + bit depth
+    int sampleRate = 48000;
+    int bitDepth   = 24;
+    if (!parseProfile(profile, sampleRate, bitDepth)) {
+        QMutexLocker lk(&m_mutex);
+        m_lastError = QStringLiteral("Unknown recording profile: ") + profile;
+        emit recordingError(m_lastError);
+        return false;
+    }
+
+    // Store format settings for use by openNewFile() and makeFilePath()
+    m_container        = container.trimmed().toUpper();
+    m_bitDepth         = bitDepth;
+    m_targetSampleRate = sampleRate;
 
     m_folder = folder;
     QDir().mkpath(folder);
 
-    if (!m_monitoring || m_device.id() != device.id()) {
+    // Restart the audio source if the device or sample rate changed
+    const bool needRestart = !m_monitoring
+                          || m_device.id() != device.id()
+                          || m_activeFormat.sampleRate() != sampleRate;
+    if (needRestart) {
         if (m_monitoring) stopSource();
-        if (!startSource(device)) return false;
+        if (!startSource(device, sampleRate)) return false;
     }
 
-    // Open first WAV file
+    // Open first file
     if (!openNewFile()) {
         return false;
     }
@@ -238,17 +281,9 @@ void Recorder::stop() {
     emit recordingStateChanged(false);
 }
 
-bool Recorder::isRecording() const {
-    return m_recording;
-}
-
-bool Recorder::isMonitoring() const {
-    return m_monitoring;
-}
-
-bool Recorder::isMonitorOutputEnabled() const {
-    return m_monitorOutputEnabled;
-}
+bool Recorder::isRecording() const  { return m_recording; }
+bool Recorder::isMonitoring() const { return m_monitoring; }
+bool Recorder::isMonitorOutputEnabled() const { return m_monitorOutputEnabled; }
 
 void Recorder::setFilePrefix(const QString& prefix) {
     QMutexLocker lk(&m_mutex);
@@ -291,7 +326,12 @@ bool Recorder::openNewFile() {
     closeFile();
 
     const QString path = makeFilePath();
-    if (!m_writer.open(path, kChannels, kSampleRate)) {
+
+    const WavWriter::Format fmt = (m_container == QStringLiteral("AIFF"))
+                                  ? WavWriter::Format::AIFF
+                                  : WavWriter::Format::WAV;
+
+    if (!m_writer.open(path, kChannels, m_targetSampleRate, m_bitDepth, fmt)) {
         QMutexLocker lk(&m_mutex);
         m_lastError = QStringLiteral("Cannot create file: ") + path;
         emit recordingError(m_lastError);
@@ -319,9 +359,12 @@ QString Recorder::makeFilePath() const {
         QMutexLocker lk(&m_mutex);
         prefix = m_filePrefix;
     }
-    const QString ts = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"));
+    const QString ts   = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"));
     const QString base = prefix.isEmpty() ? ts : QStringLiteral("%1_%2").arg(prefix, ts);
-    return QDir(m_folder).filePath(QStringLiteral("%1.wav").arg(base));
+    const QString ext  = (m_container == QStringLiteral("AIFF"))
+                         ? QStringLiteral("aiff")
+                         : QStringLiteral("wav");
+    return QDir(m_folder).filePath(QStringLiteral("%1.%2").arg(base, ext));
 }
 
 void Recorder::onAudioReady() {
@@ -341,6 +384,7 @@ void Recorder::onAudioReady() {
         const auto* samples = reinterpret_cast<const float*>(raw.constData());
         const int frameCount = raw.size() / static_cast<int>(sizeof(float) * srcCh);
 
+        // Emit 16-bit preview (for web/VU)
         QByteArray pcm16;
         pcm16.resize(frameCount * srcCh * static_cast<int>(sizeof(int16_t)));
         auto* out = reinterpret_cast<int16_t*>(pcm16.data());
@@ -376,7 +420,7 @@ void Recorder::writeMonitorData(const QByteArray& raw) {
 void Recorder::processAudioFloat(const float* data, int frameCount, int srcCh, bool writeToFile) {
     if (frameCount <= 0) return;
 
-    // Compute VU from input channels
+    // VU from input channels
     double sumL = 0.0, sumR = 0.0;
     for (int f = 0; f < frameCount; ++f) {
         const float l = data[f * srcCh + 0];
@@ -387,12 +431,12 @@ void Recorder::processAudioFloat(const float* data, int frameCount, int srcCh, b
     emitVu(toDb(float(std::sqrt(sumL / frameCount))),
            toDb(float(std::sqrt(sumR / frameCount))));
 
-    // Write to WAV – if mono source, duplicate to stereo
     if (!writeToFile) return;
+
+    // Mono → stereo duplication if needed
     if (srcCh == kChannels) {
         m_writer.writeFloat(data, frameCount);
     } else {
-        // Mono → stereo
         QVector<float> stereo(frameCount * 2);
         for (int f = 0; f < frameCount; ++f) {
             stereo[f * 2 + 0] = data[f];
@@ -405,7 +449,7 @@ void Recorder::processAudioFloat(const float* data, int frameCount, int srcCh, b
 void Recorder::processAudioInt16(const int16_t* data, int frameCount, int srcCh, bool writeToFile) {
     if (frameCount <= 0) return;
 
-    // Compute VU
+    // VU
     double sumL = 0.0, sumR = 0.0;
     for (int f = 0; f < frameCount; ++f) {
         const float l = float(data[f * srcCh + 0]) / 32768.0f;
@@ -416,8 +460,9 @@ void Recorder::processAudioInt16(const int16_t* data, int frameCount, int srcCh,
     emitVu(toDb(float(std::sqrt(sumL / frameCount))),
            toDb(float(std::sqrt(sumR / frameCount))));
 
-    // Convert Int16 → Float, handle mono → stereo
     if (!writeToFile) return;
+
+    // Convert Int16 → Float for writing (writer handles final bit depth conversion)
     QVector<float> floatBuf(frameCount * kChannels);
     for (int f = 0; f < frameCount; ++f) {
         const float l = float(data[f * srcCh + 0]) / 32768.0f;
@@ -437,7 +482,6 @@ void Recorder::emitVu(float leftDb, float rightDb) {
 
     const float decay = kVuDecayPerSec * dt;
 
-    // Fast attack, slow decay
     m_vuLeft  = std::max(kMinDb, std::max(std::min(leftDb,  kMaxDb), m_vuLeft  - decay));
     m_vuRight = std::max(kMinDb, std::max(std::min(rightDb, kMaxDb), m_vuRight - decay));
 
@@ -452,7 +496,7 @@ void Recorder::checkRotation() {
     qint64 segmentDurationMs;
     {
         QMutexLocker lk(&m_mutex);
-        startMs = m_segmentStartMs;
+        startMs           = m_segmentStartMs;
         segmentDurationMs = m_segmentDurationMs;
     }
 

@@ -2,11 +2,22 @@
 
 **Professional continuous audio recorder — C++/Qt6, zero dependencies.**
 
-Current release: **v0.2**
+Current release: **v0.3.0**
 
 ![InfinityAudio](docs/screenshot.png)
 
 Record broadcast-quality audio continuously with configurable file segmentation, real-time dual-channel VU meters, and a built-in web remote control panel.
+
+---
+
+## What's new in v0.3.0
+
+- **Solved bugs**
+  - real **AIFF** recording support
+  - real **16-bit / 44.1 kHz** recording support
+  - real **24-bit / 96 kHz** recording support
+- **Improved**
+  - keyboard shortcuts for **Rec**, **Stop**, and **Monitor**
 
 ---
 
@@ -66,8 +77,8 @@ chmod +x build_scripts/build-linux.sh
 ```bash
 cd build-linux
 cpack -G DEB
-# Output: infinityaudio_0.2.0_amd64.deb
-sudo dpkg -i infinityaudio_0.2.0_amd64.deb
+# Output: infinityaudio_0.3.0_amd64.deb
+sudo dpkg -i infinityaudio_0.3.0_amd64.deb
 ```
 
 ### Windows (MSYS2 / UCRT64)
@@ -105,7 +116,7 @@ build_scripts\build-installer.bat
 Output:
 
 ```text
-dist\InfinityAudio-setup-0.2.0.exe
+dist\InfinityAudio-setup-0.3.0.exe
 ```
 
 ### macOS

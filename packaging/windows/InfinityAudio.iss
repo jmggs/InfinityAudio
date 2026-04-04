@@ -1,5 +1,5 @@
 #define MyAppName "InfinityAudio"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "InfinityAudio"
 #define MyAppURL "https://github.com/jmggs/InfinityAudio"
 #define MyAppExeName "InfinityAudio.exe"

@@ -31,7 +31,7 @@ if errorlevel 1 (
 
 echo.
 echo Installer OK:
-echo   %ROOT_DIR%dist\InfinityAudio-setup-0.2.0.exe
+echo   %ROOT_DIR%dist\InfinityAudio-setup-0.3.0.exe
 
 popd >nul
 exit /b 0

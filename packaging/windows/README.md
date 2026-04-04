@@ -39,7 +39,7 @@ build_scripts\build-installer.bat
 This generates:
 
 ```text
-dist\InfinityAudio-setup-0.2.0.exe
+dist\InfinityAudio-setup-0.3.0.exe
 ```
 
 ## Files that should stay in Git

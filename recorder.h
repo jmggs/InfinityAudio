@@ -13,7 +13,7 @@
 
 #include "wav_writer.h"
 
-// Records local audio to 24-bit WAV files with 1-hour segment rotation.
+// Records local audio to WAV or AIFF files with 1-hour segment rotation.
 // Audio is captured via QAudioSource in push mode.
 // VU levels are computed from every captured block and emitted as signals.
 class Recorder : public QObject {
@@ -29,7 +29,11 @@ public:
     bool setMonitorOutputEnabled(bool enabled);
 
     // Start recording to folder using the given device.
-    bool start(const QString& folder, const QAudioDevice& device);
+    //   container : "WAV" or "AIFF"
+    //   profile   : "16bit 44.1khz" | "24bit 48khz" | "24bit 96khz"
+    bool start(const QString& folder, const QAudioDevice& device,
+               const QString& container = QStringLiteral("WAV"),
+               const QString& profile   = QStringLiteral("24bit 48khz"));
     void stop();
 
     bool    isRecording()           const;
@@ -55,7 +59,7 @@ private slots:
     void checkRotation();
 
 private:
-    bool   startSource(const QAudioDevice& device);
+    bool   startSource(const QAudioDevice& device, int sampleRate);
     void   stopSource();
     bool   startMonitorSink();
     void   stopMonitorSink();
@@ -69,7 +73,7 @@ private:
 
     // Audio source (owned)
     QAudioSource*  m_source{nullptr};
-    QIODevice*     m_ioDevice{nullptr};   // returned by QAudioSource::start()
+    QIODevice*     m_ioDevice{nullptr};
     QAudioSink*    m_monitorSink{nullptr};
     QIODevice*     m_monitorSinkDevice{nullptr};
     QAudioFormat   m_activeFormat;
@@ -81,10 +85,15 @@ private:
     QString        m_filePrefix;
     qint64         m_segmentDurationMs{3600LL * 1000LL};
 
+    // Format settings (set by start())
+    QString        m_container{QStringLiteral("WAV")};
+    int            m_bitDepth{24};
+    int            m_targetSampleRate{48000};
+
     // Rotation timer (checks every 5 s)
     QTimer         m_rotTimer;
 
-    // Shared state (may be read from UI thread via currentFile / currentSegmentStartMs)
+    // Shared state (may be read from UI thread)
     mutable QMutex m_mutex;
     QString        m_currentFile;
     qint64         m_segmentStartMs{0};

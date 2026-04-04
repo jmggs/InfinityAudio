@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QShortcut>
 #include <QTextEdit>
 #include <QStandardPaths>
 #include <QUrl>
@@ -85,6 +86,23 @@ UiWidget::UiWidget(QWidget* parent)
         });
     connect(&m_recorder, &Recorder::vuLevelsReady, m_webServer, &WebServer::onVuLevels);
     connect(&m_recorder, &Recorder::audioPreviewPcmReady, m_webServer, &WebServer::onAudioPcm16);
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
+    // Shift+R → Start recording
+    auto* scRec  = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_R), this);
+    connect(scRec,  &QShortcut::activated, this, &UiWidget::startRecording);
+
+    // Shift+S → Stop recording
+    auto* scStop = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_S), this);
+    connect(scStop, &QShortcut::activated, this, &UiWidget::stopRecording);
+
+    // M → Toggle monitor button state in the GUI
+    auto* scMon  = new QShortcut(QKeySequence(Qt::Key_M), this);
+    connect(scMon, &QShortcut::activated, this, [this]() {
+        if (m_monitorBtn) {
+            m_monitorBtn->click();
+        }
+    });
 
     m_restoringSettings = true;
     refreshDevices();
@@ -634,7 +652,7 @@ void UiWidget::openSettingsDialog() {
         root->addLayout(form);
         root->addSpacing(12);
 
-        auto* appInfo = new QLabel("InfinityAudio v0.2<br><a href=\"https://github.com/jmggs/InfinityAudio/\">https://github.com/jmggs/InfinityAudio/</a>", m_settingsDialog);
+        auto* appInfo = new QLabel("InfinityAudio v0.3.0<br><a href=\"https://github.com/jmggs/InfinityAudio/\">https://github.com/jmggs/InfinityAudio/</a>", m_settingsDialog);
         appInfo->setObjectName("fileVal");
         appInfo->setTextFormat(Qt::RichText);
         appInfo->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::TextSelectableByMouse);
@@ -818,7 +836,7 @@ void UiWidget::startRecording() {
     m_watchdog.setRecordingFolder(folder);
     m_watchdog.setDesiredRecording(true);
 
-    if (!m_recorder.start(folder, device)) {
+    if (!m_recorder.start(folder, device, m_recordContainer, m_recordProfile)) {
         m_recBtn->setChecked(false);
         m_watchdog.setDesiredRecording(false);
     }
