@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="InfinityAudio icon">
+  <rect width="256" height="256" rx="36" fill="#111111"/>
+  <g fill="none" stroke="#7CFC00" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M28 128c20-30 52-30 72 0c20 30 52 30 72 0"/>
+    <path d="M228 128c-20-30-52-30-72 0c-20 30-52 30-72 0"/>
+  </g>
+  <circle cx="128" cy="128" r="10" fill="#7CFC00"/>
+</svg>

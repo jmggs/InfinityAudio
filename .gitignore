@@ -1,0 +1,33 @@
+# Build directories
+build-linux/
+build-mac/
+build-windows/
+build/
+cmake-build-*/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+CPackConfig.cmake
+CPackSourceConfig.cmake
+_CPack_Packages/
+
+# Generated
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+compile_commands.json
+
+# Qt — AUTOUIC generated (AUTOUIC is OFF, but keep for safety)
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

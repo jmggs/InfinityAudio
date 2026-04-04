@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=InfinityAudio
+Comment=Continuous WAV audio recorder
+Exec=InfinityAudio
+Icon=infinityaudio
+Terminal=false
+Type=Application
+Categories=Audio;AudioVideo;Recorder;
+Keywords=audio;record;wav;monitor;
+StartupNotify=true
