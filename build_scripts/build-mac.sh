@@ -34,8 +34,6 @@ for pkg in cmake qt; do
     fi
 done
 
-QT_PREFIX="$(brew --prefix qt)"
-
 # ── 3. Detect architecture and select preset ──────────────────────────────────
 ARCH="$(uname -m)"   # arm64 or x86_64
 
@@ -56,10 +54,30 @@ cd "$PROJECT_DIR"
 cmake --preset "$PRESET"
 cmake --build "$BUILD_DIR" --parallel
 
+# ── 5. Validate macOS microphone permission key ──────────────────────────────
+APP_BUNDLE="$BUILD_DIR/InfinityAudio.app"
+INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
+MIC_KEY_VALUE=""
+if [[ -f "$INFO_PLIST" ]] && command -v /usr/libexec/PlistBuddy &>/dev/null; then
+    MIC_KEY_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$INFO_PLIST" 2>/dev/null || true)"
+fi
+
 # ── 5. Report ─────────────────────────────────────────────────────────────────
 echo ""
 echo "Build complete:"
-echo "  App bundle: $BUILD_DIR/InfinityAudio.app"
+echo "  App bundle : $APP_BUNDLE"
+echo "  Size       : ~100 MB (self-contained, includes Qt frameworks)"
+if [[ -n "$MIC_KEY_VALUE" ]]; then
+    echo "  Mic usage  : OK (Info.plist contains NSMicrophoneUsageDescription)"
+else
+    echo "  Mic usage  : WARNING (NSMicrophoneUsageDescription not found in Info.plist)"
+fi
 echo ""
 echo "  To run:"
-echo "    open \"$BUILD_DIR/InfinityAudio.app\""
+echo "    open \"$APP_BUNDLE\""
+echo ""
+echo "  macOS note:"
+echo "    On first launch, allow microphone access when prompted."
+echo "    If denied before, enable it in System Settings > Privacy & Security > Microphone."
+echo ""
+echo "  To distribute: copy the entire .app folder to any Mac (arm64 or x86_64)."
