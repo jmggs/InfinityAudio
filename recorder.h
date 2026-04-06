@@ -69,6 +69,7 @@ private:
     QString makeFilePath() const;
     void   processAudioFloat(const float* data, int frameCount, int srcChannels, bool writeToFile);
     void   processAudioInt16(const int16_t* data, int frameCount, int srcChannels, bool writeToFile);
+    void   writeStereoFloat(const float* data, int frameCount, int srcChannels);
     void   emitVu(float leftDb, float rightDb);
 
     // Audio source (owned)
@@ -107,4 +108,5 @@ private:
     bool           m_recording{false};
     bool           m_monitoring{false};
     bool           m_monitorOutputEnabled{false};
+    bool           m_rotationPending{false};  // set by timer; honoured at next zero-crossing
 };

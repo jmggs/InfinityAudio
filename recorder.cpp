@@ -269,6 +269,7 @@ void Recorder::stop() {
 
     m_recording = false;
     m_rotTimer.stop();
+    m_rotationPending = false;
 
     closeFile();
     stopSource();
@@ -417,6 +418,22 @@ void Recorder::writeMonitorData(const QByteArray& raw) {
     }
 }
 
+// ── Helper: write frameCount interleaved frames (srcChannels) to the file ────
+// Handles mono→stereo duplication automatically.
+void Recorder::writeStereoFloat(const float* data, int frameCount, int srcChannels) {
+    if (frameCount <= 0) return;
+    if (srcChannels == kChannels) {
+        m_writer.writeFloat(data, frameCount);
+    } else {
+        QVector<float> stereo(frameCount * 2);
+        for (int f = 0; f < frameCount; ++f) {
+            stereo[f * 2 + 0] = data[f];
+            stereo[f * 2 + 1] = data[f];
+        }
+        m_writer.writeFloat(stereo.data(), frameCount);
+    }
+}
+
 void Recorder::processAudioFloat(const float* data, int frameCount, int srcCh, bool writeToFile) {
     if (frameCount <= 0) return;
 
@@ -433,17 +450,39 @@ void Recorder::processAudioFloat(const float* data, int frameCount, int srcCh, b
 
     if (!writeToFile) return;
 
-    // Mono → stereo duplication if needed
-    if (srcCh == kChannels) {
-        m_writer.writeFloat(data, frameCount);
-    } else {
-        QVector<float> stereo(frameCount * 2);
-        for (int f = 0; f < frameCount; ++f) {
-            stereo[f * 2 + 0] = data[f];
-            stereo[f * 2 + 1] = data[f];
+    // ── Zero-crossing rotation ─────────────────────────────────────────────
+    // When the rotation timer has fired, find the first zero-crossing in this
+    // buffer and split there: frames [0, split) → current file, rotate, then
+    // frames [split, end) → new file.  This guarantees both files end/start at
+    // (near-)zero amplitude, eliminating clicks when segments are joined in a
+    // DAW.  If no zero-crossing is found in this buffer we keep writing to the
+    // current file and try again on the next callback — no audio is lost.
+    if (m_rotationPending) {
+        int splitFrame = -1;
+        for (int f = 1; f < frameCount; ++f) {
+            const float prev = data[(f - 1) * srcCh];  // left channel sign
+            const float curr = data[ f      * srcCh];
+            if ((prev >= 0.0f && curr < 0.0f) || (prev < 0.0f && curr >= 0.0f)) {
+                splitFrame = f;
+                break;
+            }
         }
-        m_writer.writeFloat(stereo.data(), frameCount);
+
+        if (splitFrame > 0) {
+            // Write everything before the crossing to the current file …
+            writeStereoFloat(data, splitFrame, srcCh);
+            // … close it and open a fresh one …
+            openNewFile();
+            m_rotationPending = false;
+            // … then write the rest (from the zero-crossing onward) to the new file.
+            writeStereoFloat(data + splitFrame * srcCh, frameCount - splitFrame, srcCh);
+            return;
+        }
+        // No crossing found — fall through and write the whole buffer normally;
+        // m_rotationPending stays true so we retry on the next callback.
     }
+
+    writeStereoFloat(data, frameCount, srcCh);
 }
 
 void Recorder::processAudioInt16(const int16_t* data, int frameCount, int srcCh, bool writeToFile) {
@@ -500,7 +539,9 @@ void Recorder::checkRotation() {
         segmentDurationMs = m_segmentDurationMs;
     }
 
+    // Don't rotate immediately — set a flag so the audio callback can split
+    // at a zero-crossing, avoiding clicks at segment boundaries.
     if (now - startMs >= segmentDurationMs) {
-        openNewFile();
+        m_rotationPending = true;
     }
 }

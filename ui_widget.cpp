@@ -76,7 +76,8 @@ UiWidget::UiWidget(QWidget* parent)
             return true;
         },
         [this](int minutes) {
-            if (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60) {
+        if (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60 &&
+            minutes != 90 && minutes != 120) {
                 return false;
             }
             m_recordChunkMinutes = minutes;
@@ -363,7 +364,8 @@ void UiWidget::loadSettings() {
     m_recordPrefix = s.value("recordPrefix", QString()).toString().trimmed();
     m_recordChunkMinutes = s.value("recordChunkMinutes", 60).toInt();
     if (m_recordChunkMinutes != 15 && m_recordChunkMinutes != 30 &&
-        m_recordChunkMinutes != 45 && m_recordChunkMinutes != 60) {
+        m_recordChunkMinutes != 45 && m_recordChunkMinutes != 60 &&
+        m_recordChunkMinutes != 90 && m_recordChunkMinutes != 120) {
         m_recordChunkMinutes = 60;
     }
     m_recordContainer = s.value("recordContainer", QString("WAV")).toString();
@@ -630,7 +632,7 @@ void UiWidget::openSettingsDialog() {
         m_recordProfileCombo = new QComboBox(m_settingsDialog);
         m_recordPrefixEdit->setPlaceholderText("Ex: StudioA");
         m_recordPrefixEdit->setText(m_recordPrefix);
-        m_recordChunkCombo->addItems({"15", "30", "45", "60"});
+        m_recordChunkCombo->addItems({"15", "30", "45", "60", "90", "120"});
         m_recordChunkCombo->setCurrentText(QString::number(m_recordChunkMinutes));
         m_recordContainerCombo->addItems({"WAV", "AIFF"});
         m_recordProfileCombo->addItems({"16bit 44.1khz", "24bit 48khz", "24bit 96khz"});
@@ -674,7 +676,8 @@ void UiWidget::openSettingsDialog() {
         connect(m_recordChunkCombo, &QComboBox::currentTextChanged, this, [this](const QString& value) {
             bool ok = false;
             const int minutes = value.toInt(&ok);
-            if (!ok || (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60)) {
+            if (!ok || (minutes != 15 && minutes != 30 && minutes != 45 && minutes != 60 &&
+                        minutes != 90 && minutes != 120)) {
                 return;
             }
             m_recordChunkMinutes = minutes;
@@ -752,7 +755,7 @@ void UiWidget::openRemoteDialog() {
             "GET /inputs -> List input devices\n"
             "GET /set-input?device=NAME -> Select input device\n"
             "GET /settings -> Read prefix + chunk\n"
-            "GET /set-settings?prefix=...&chunkMinutes=15|30|45|60 -> Update settings\n"
+            "GET /set-settings?prefix=...&chunkMinutes=15|30|45|60|90|120 -> Update settings\n"
             "GET /status -> App status JSON");
         form->addRow("Port:", m_remotePortSpin);
         form->addRow("Password:", m_remotePasswordEdit);
