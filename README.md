@@ -16,8 +16,12 @@ Record broadcast-quality audio continuously with configurable file segmentation,
   - real **AIFF** recording support
   - real **16-bit / 44.1 kHz** recording support
   - real **24-bit / 96 kHz** recording support
+  - fixed **macOS microphone permission** handling in app bundle (`NSMicrophoneUsageDescription`)
+  - fixed **File Prefix text clipping** in Settings
 - **Improved**
   - keyboard shortcuts for **Rec**, **Stop**, and **Monitor**
+  - clearer **macOS warning** when no input device is available
+  - wider **Settings** fields for long input/folder text
 
 ---
 
@@ -129,9 +133,15 @@ chmod +x build_scripts/build-mac.sh
 ./build_scripts/build-mac.sh
 ```
 
-App bundle output:
+App bundle output (self-contained, ~100 MB — includes all Qt frameworks):
 - Apple Silicon → `build-mac-arm64/InfinityAudio.app`
 - Intel         → `build-mac-x86_64/InfinityAudio.app`
+
+The produced `.app` runs on any Mac of the same architecture without Qt installed.
+
+On first launch in macOS, allow microphone access when prompted.
+If you previously denied access, enable it in:
+`System Settings → Privacy & Security → Microphone`.
 
 Or build manually:
 
