@@ -119,13 +119,30 @@ Output:
 dist\InfinityAudio-setup-0.3.0.exe
 ```
 
-### macOS
+### macOS (Apple Silicon & Intel)
+
+One-step script — installs missing dependencies via Homebrew automatically and
+detects architecture (arm64 / x86_64):
 
 ```bash
-brew install qt cmake ninja
-cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
-cmake --build build-mac --parallel
+chmod +x build_scripts/build-mac.sh
+./build_scripts/build-mac.sh
+```
+
+App bundle output:
+- Apple Silicon → `build-mac-arm64/InfinityAudio.app`
+- Intel         → `build-mac-x86_64/InfinityAudio.app`
+
+Or build manually:
+
+```bash
+# Apple Silicon
+cmake --preset macos-arm64-release
+cmake --build build-mac-arm64 --parallel
+
+# Intel
+cmake --preset macos-x86_64-release
+cmake --build build-mac-x86_64 --parallel
 ```
 
 ---
